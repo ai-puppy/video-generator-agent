@@ -10,6 +10,7 @@ from dotenv import find_dotenv, load_dotenv
 from langchain.chat_models import init_chat_model
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import Send
+from moviepy import VideoFileClip, concatenate_videoclips
 from pydantic import BaseModel, Field
 from typing_extensions import TypedDict
 
@@ -41,6 +42,7 @@ class OverallState(TypedDict):
     completed_videos: Annotated[
         list[Video], operator.add
     ]  # Completed: videos with generated files
+    combined_video_path: str  # Path to the final combined video
 
 
 def collect_file_to_process(state: OverallState) -> OverallState:
@@ -314,17 +316,14 @@ def generate_video(state: Video) -> OverallState:
         # Download the video if generation was successful
         if result and "video" in result and "url" in result["video"]:
             video_url = result["video"]["url"]
-            suggested_filename = result["video"].get("file_name", f"{name}.mp4")
 
-            # Ensure filename is safe
-            safe_filename = "".join(
-                c for c in suggested_filename if c.isalnum() or c in ".-_"
-            )
-            if not safe_filename.endswith(".mp4"):
-                safe_filename += ".mp4"
+            # Create unique filename based on the video name
+            safe_name = "".join(c for c in name if c.isalnum() or c in " -_")
+            safe_name = safe_name.replace(" ", "_")  # Replace spaces with underscores
+            unique_filename = f"{safe_name}.mp4"
 
             # Download the video
-            downloaded_file = download_video_to_output(video_url, safe_filename)
+            downloaded_file = download_video_to_output(video_url, unique_filename)
 
             if downloaded_file:
                 file_size = os.path.getsize(downloaded_file)
@@ -348,6 +347,89 @@ def generate_video(state: Video) -> OverallState:
         return {"completed_videos": [state]}
 
 
+def combine_videos(state: OverallState) -> OverallState:
+    """
+    Combine all generated videos into one final video
+    """
+    completed_videos = state["completed_videos"]
+
+    if not completed_videos:
+        print("No completed videos to combine")
+        return state
+
+    # Filter videos that have valid file paths
+    valid_videos = [
+        video
+        for video in completed_videos
+        if video.get("file_path") and os.path.exists(video["file_path"])
+    ]
+
+    if not valid_videos:
+        print("No valid video files found to combine")
+        return state
+
+    try:
+        print(f"Combining {len(valid_videos)} videos...")
+
+        # Sort videos by their original image filename for consistent order
+        valid_videos.sort(key=lambda v: os.path.basename(v["pic"]["pic_path"]))
+
+        # Load video clips
+        clips = []
+        for video in valid_videos:
+            file_path = video["file_path"]
+            print(f"Loading video: {file_path}")
+
+            try:
+                clip = VideoFileClip(file_path)
+                clips.append(clip)
+                print(f"  Duration: {clip.duration:.2f}s, Size: {clip.size}")
+            except Exception as e:
+                print(f"  Error loading {file_path}: {e}")
+                continue
+
+        if not clips:
+            print("No valid clips could be loaded")
+            return state
+
+        # Concatenate all clips
+        print("Concatenating videos...")
+        final_clip = concatenate_videoclips(clips, method="compose")
+
+        # Create output filename
+        output_dir = "video-output"
+        os.makedirs(output_dir, exist_ok=True)
+        combined_filename = "combined_video.mp4"
+        combined_path = os.path.join(output_dir, combined_filename)
+
+        # Write the final video
+        print(f"Writing combined video to: {combined_path}")
+        final_clip.write_videofile(
+            combined_path,
+            codec="libx264",
+            audio_codec="aac",
+            logger=None,  # Suppress moviepy logs
+        )
+
+        # Close all clips to free memory
+        final_clip.close()
+        for clip in clips:
+            clip.close()
+
+        # Get file info
+        file_size = os.path.getsize(combined_path)
+        print("Combined video created successfully!")
+        print(f"  Path: {combined_path}")
+        print(f"  Size: {file_size:,} bytes")
+        print(f"  Duration: {final_clip.duration:.2f}s")
+
+        return {"combined_video_path": combined_path}
+
+    except Exception as e:
+        print(f"Error combining videos: {e}")
+        return state
+
+
 # Build the graph
 def build_video_generation_graph():
     """
@@ -360,6 +442,7 @@ def build_video_generation_graph():
     builder.add_node("generate_prompt", generate_prompt)
     builder.add_node("check_prompt_consistency", check_prompt_consistency)
     builder.add_node("generate_video", generate_video)
+    builder.add_node("combine_videos", combine_videos)
 
     # Add edges
     builder.add_edge(START, "collect_file_to_process")
@@ -370,7 +453,8 @@ def build_video_generation_graph():
     builder.add_conditional_edges(
         "check_prompt_consistency", continue_to_video_generation, ["generate_video"]
     )
-    builder.add_edge("generate_video", END)
+    builder.add_edge("generate_video", "combine_videos")
+    builder.add_edge("combine_videos", END)
 
     return builder.compile()
 
