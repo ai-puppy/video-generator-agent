@@ -9,3 +9,27 @@ dependencies = [
     "fal-client>=0.7.0",
     "requests>=2.32.3",
 ]
+
+[tool.uv]
+dev-dependencies = [
+    "black>=24.0.0",
+    "ruff>=0.6.0",
+    "isort>=5.13.0",
+    "pre-commit>=3.8.0",
+]
+
+[tool.black]
+line-length = 88
+target-version = ['py311']
+
+[tool.ruff]
+line-length = 88
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP"]
+ignore = ["E501"]
+
+[tool.isort]
+profile = "black"
+line_length = 88
