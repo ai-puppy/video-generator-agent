@@ -11,3 +11,4 @@ wheels/
 .env
 pic-input/
 video-output/
+.langgraph_api/
