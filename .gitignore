@@ -9,6 +9,11 @@ wheels/
 # Virtual environments
 .venv
 .env
-pic-input/
-video-output/
+
+# Input and output directories - ignore contents but keep folders
+pic-input/*
+!pic-input/.gitkeep
+video-output/*
+!video-output/.gitkeep
+
 .langgraph_api/
