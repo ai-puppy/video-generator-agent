@@ -461,4 +461,11 @@ def build_video_generation_graph():
 
 # Create the graph
 video_graph = build_video_generation_graph()
-video_graph.invoke({"files_to_process": []})
+
+
+def main():
+    video_graph.invoke({"files_to_process": []})
+
+
+if __name__ == "__main__":
+    main()
