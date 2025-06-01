@@ -15,5 +15,11 @@ pic-input/*
 !pic-input/.gitkeep
 video-output/*
 !video-output/.gitkeep
+music-output/*
+!music-output/.gitkeep
+
+final-output/*
+!final-output/.gitkeep
 
 .langgraph_api/
+.DS_Store
